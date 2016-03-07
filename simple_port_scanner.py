@@ -1,3 +1,4 @@
+# Note: Sections of the scanning capability were inspired by code at http://resources.infosecinstitute.com/port-scanning-using-scapy/
 import logging
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 import scapy.all as scapy
@@ -191,7 +192,7 @@ def scanPorts(ips, tcp_ports, udp_ports, traceroute):
 def trace(ip):
 	print "Running traceroute:"
 	for i in range(1,25):
-		packet = scapy.IP(dst=ip, ttl=i)/scapy.TCP(flags=0x2)
+		packet = scapy.IP(dst=ip, ttl=i)/scapy.TCP(flags="S")
 		response = scapy.sr1(packet, timeout=1, verbose=0)
 
 		if response is None:
@@ -219,7 +220,7 @@ def scanTCPPort(ip, port):
 		# If the packet returned had the SYN and ACK flags
 		if(response.getlayer(scapy.TCP).flags == 0x12):
 			# Send TCP packet back to host with ACK and RST flags
-			packet = scapy.IP(dst=ip)/scapy.TCP(sport=src_port,dport=dst_port,flags="AR")
+			packet = scapy.IP(dst=ip)/scapy.TCP(sport=src_port,dport=dst_port,flags=0x14)
 			send_rst = scapy.sr(packet, verbose=False, timeout=5)
 			return True
 
@@ -236,19 +237,13 @@ def scanUDPPort(ip, port):
 	response = scapy.sr1(packet, verbose=False, timeout=5)
 	
 	if response is None:
-		retrans = []
-		# Send 3 more packets
-		for count in range(0,3):
-			retrans.append(scapy.sr1(packet, verbose=False, timeout=5))
-		for item in retrans:
-			if item is None:
-				return "Open|Filtered"
-			elif (response.haslayer(scapy.UDP)):
-				return "Open"
+		return "Open|Filtered"
 
 	elif(response.haslayer(scapy.ICMP)):
+		# If the response is an ICMP type 3 (port unreachable) code 3, port is closed
 		if(int(response.getlayer(scapy.ICMP).type)==3 and int(response.getlayer(scapy.ICMP).code)==3):
 			return "Closed"
+		# If the response is an ICMP port unreachable codes 1,2,9,10,13 port is filtered
 		elif(int(response.getlayer(scapy.ICMP).type)==3 and int(response.getlayer(scapy.ICMP).code) in [1,2,9,10,13]):
 			return "Filtered"
 	
