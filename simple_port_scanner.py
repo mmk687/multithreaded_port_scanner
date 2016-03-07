@@ -5,7 +5,8 @@ import scapy.all as scapy
 import sys
 import netaddr
 import re
-from multiprocessing import Process
+from threading import Thread
+from Queue import Queue
 
 help_text = "Usage: simple_port_scanner [target_ip_address(es)] [T:|U:][target_port(s)] [options]\n\
 Options:\n\
@@ -14,7 +15,7 @@ Options:\n\
 \t-h\t\tDisplay this help text\n\
 \t-t\t\tPerform a traceroute on the target ip(s)\n\
 \t-aU\t\tAssume that the hosts are up, do not ping\n\
-\n\
+\t-t <#>\t\tSpecify thread count\n\
 Note: IP Addresses can either be input into the command line or the -f switch can be used\n\
 \n\
 The following rules apply when using * and - to * to represent IP ranges:\n\
@@ -33,6 +34,7 @@ traceroute = False
 debug = False
 help = False
 hosts_file = ""
+thread_number = 0
 
 class InvalidArgumentError(Exception):
 	def __init__(self, value):
@@ -67,6 +69,7 @@ def processArgs(args):
 		global hosts_file
 		global debug
 		global help
+		global thread_number
 
 		try:
 			if skip_next:
@@ -90,6 +93,9 @@ def processArgs(args):
 			elif current_argument == "-f" and len(args) >= i + 1:
 				skip_next = True
 				hosts_file = args[i+1]
+			elif current_argument == "-tH" and len(args) >= i + 1:
+				skip_next = True
+				thread_number = int(args[i+1])
 			else:
 				raise InvalidArgumentError(current_argument)
 	
@@ -187,26 +193,38 @@ def scanPorts(ips, tcp_ports, udp_ports, traceroute):
 		print "----------------------------------\n"
 		if traceroute:
 			trace(ip)
+
 		if tcp_ports:
+			qTCP = Queue()		
+		
 			print "Running TCP scan:"
-			port_found = False
+			for i in range(thread_number):		
+				t = Thread(target=scanTCPPort, args = (ip, qTCP))
+				t.daemon = True
+				t.start()
+
 			for port in tcp_ports:
 				if debug:
 					print "Scanning TCP port ", port, " on ", ip, "..."
-				if scanTCPPort(ip, port):
-					print "\t", port, "\tOpen"
-					port_found = True
+				qTCP.put(port)
 
-			if not port_found:
-				print "\tNo TCP ports targeted were found to be open."
-	
+			qTCP.join()
+
 		if udp_ports:
+			qUDP = Queue()
+
 			print "Running UDP scan:"
-			port_found = False
+			for i in range(thread_number):	
+				t = Thread(target=scanUDPPort, args = (ip, qUDP))
+				t.daemon = True
+				t.start()
+
 			for port in udp_ports:
 				if debug:
 					print "Scanning UDP port ", port, " on ", ip, "..."
-				print "\t", port, "\t", scanUDPPort(ip, port)
+				qUDP.put(port)
+			
+			qUDP.join()
 
 	print ""
 	return
@@ -227,50 +245,59 @@ def trace(ip):
 			print "\t-Trace complete-"
 			break
 
-def scanTCPPort(ip, port):
-	dst_port = port
-	src_port = scapy.RandShort()
+def scanTCPPort(ip, queue):
+	while True:
+
+		dst_port = queue.get()
+		src_port = scapy.RandShort()
 	
-	packet = scapy.IP(dst=ip)/scapy.TCP(sport=src_port, dport=dst_port, flags="S")
-	response = scapy.sr1(packet, verbose=False, timeout=5)
+		packet = scapy.IP(dst=ip)/scapy.TCP(sport=src_port, dport=dst_port, flags="S")
+		response = scapy.sr1(packet, verbose=False, timeout=5)
+
+		if response is None:
+			print "\t", dst_port, "\tClosed"
+	
+		elif(response.haslayer(scapy.TCP)):
+
+			# If the packet returned had the SYN and ACK flags
+			if(response.getlayer(scapy.TCP).flags == 0x12):
+				# Send TCP packet back to host with ACK and RST flags
+				packet = scapy.IP(dst=ip)/scapy.TCP(sport=src_port,dport=dst_port,flags=0x14)
+				send_rst = scapy.sr(packet, verbose=False, timeout=5)
+				print "\t", dst_port, "\tOpen"
+
+			# If the packet returned had the RST and ACK flags
+			elif (response.getlayer(scapy.TCP).flags == 0x14):
+				print "\t", dst_port, "\tClosed"
+		else:
+			print "\t", dst_port, "\tClosed"
+
+		queue.task_done()
+
+def scanUDPPort(ip, queue):
+	while True:
+		
+		dst_port = queue.get()
+	
+		packet = scapy.IP(dst=ip)/scapy.UDP(dport=dst_port)
+		response = scapy.sr1(packet, verbose=False, timeout=5)
+	
+		if response is None:
+			print "\t", dst_port, "\t", "Open|Filtered"
+
+		elif(response.haslayer(scapy.ICMP)):
+			# If the response is an ICMP type 3 (port unreachable) code 3, port is closed
+			if(int(response.getlayer(scapy.ICMP).type)==3 and int(response.getlayer(scapy.ICMP).code)==3):
+				print "\t", dst_port, "\t", "Closed"
 			
-	if response is None:
-		return False
+			# If the response is an ICMP port unreachable codes 1,2,9,10,13 port is filtered
+			elif(int(response.getlayer(scapy.ICMP).type)==3 and int(response.getlayer(scapy.ICMP).code) in [1,2,9,10,13]):
+				print "\t", dst_port, "\t", "Filtered"
 	
-	elif(response.haslayer(scapy.TCP)):
-
-		# If the packet returned had the SYN and ACK flags
-		if(response.getlayer(scapy.TCP).flags == 0x12):
-			# Send TCP packet back to host with ACK and RST flags
-			packet = scapy.IP(dst=ip)/scapy.TCP(sport=src_port,dport=dst_port,flags=0x14)
-			send_rst = scapy.sr(packet, verbose=False, timeout=5)
-			return True
-
-		# If the packet returned had the RST and ACK flags
-		elif (response.getlayer(scapy.TCP).flags == 0x14):
-			return False
-	else:
-		return False
-
-def scanUDPPort(ip, port):
-	dst_port = port
-	
-	packet = scapy.IP(dst=ip)/scapy.UDP(dport=dst_port)
-	response = scapy.sr1(packet, verbose=False, timeout=5)
-	
-	if response is None:
-		return "Open|Filtered"
-
-	elif(response.haslayer(scapy.ICMP)):
-		# If the response is an ICMP type 3 (port unreachable) code 3, port is closed
-		if(int(response.getlayer(scapy.ICMP).type)==3 and int(response.getlayer(scapy.ICMP).code)==3):
-			return "Closed"
-		# If the response is an ICMP port unreachable codes 1,2,9,10,13 port is filtered
-		elif(int(response.getlayer(scapy.ICMP).type)==3 and int(response.getlayer(scapy.ICMP).code) in [1,2,9,10,13]):
-			return "Filtered"
-	
-	else:
-		return "Closed"
+		else:
+			print "\t", dst_port, "\t", "Closed"
+		
+		queue.task_done()
 
 def main():
 
