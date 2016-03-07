@@ -7,6 +7,23 @@ import netaddr
 import re
 from multiprocessing import Process
 
+help_text = "Usage: simple_port_scanner [target_ip_address(es)] [T:|U:][target_port(s)] [options]\n\
+Options:\n\
+\t-d\t\tDebug program\n\
+\t-f <FILE>\tGather IP addresses from a file\n\
+\t-h\t\tDisplay this help text\n\
+\t-t\t\tPerform a traceroute on the target ip(s)\n\
+\t-aU\t\tAssume that the hosts are up, do not ping\n\
+\n\
+Note: IP Addresses can either be input into the command line or the -f switch can be used\n\
+\n\
+The following rules apply when using * and - to * to represent IP ranges:\n\
+\t1. Only one hyphenated octet per IP glob is allowed and\n\
+\t2. Only asterisks are permitted after a hyphenated octet\n\
+\t192.168.2-5.* is VALID\n\
+\t192.168.2-5.5 is NOT VALID\n\
+\t192.168.*.5 is NOT VALID\n"
+
 target_ips = []
 active_ips = []
 tcp_ports = []
@@ -14,6 +31,7 @@ udp_ports = []
 ping_hosts = True
 traceroute = False
 debug = False
+help = False
 hosts_file = ""
 
 class InvalidArgumentError(Exception):
@@ -48,11 +66,15 @@ def processArgs(args):
 		global traceroute
 		global hosts_file
 		global debug
+		global help
 
 		try:
 			if skip_next:
 				skip_next = False
 				continue
+			elif current_argument == "-h":
+				help = True
+				return
 			elif validateIP(args[i]):
 				target_ips.extend(parseIP(current_argument))
 			elif current_argument.startswith("T:") and not tcp_ports:
@@ -65,7 +87,7 @@ def processArgs(args):
 				traceroute = True
 			elif current_argument == "-d":
 				debug = True
-			elif current_argument == "-h" and len(args) >= i + 1:
+			elif current_argument == "-f" and len(args) >= i + 1:
 				skip_next = True
 				hosts_file = args[i+1]
 			else:
@@ -255,6 +277,10 @@ def main():
 	try: 
 		# Process args and print out variables
 		processArgs(sys.argv)
+
+		if help:
+			print help_text
+			return
 
 		global target_ips
 		if hosts_file:
