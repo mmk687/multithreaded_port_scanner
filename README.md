@@ -24,6 +24,6 @@ The following rules apply when using * and - to * to represent IP ranges:
 <li>Only one hyphenated octet per IP glob is allowed and
 <li>Only asterisks are permitted after a hyphenated octet
 </ol>
-192.168.2-5.* is VALID
-192.168.2-5.5 is NOT VALID
-192.168.*.5 is NOT VALID
+192.168.2-5.* is VALID<br />
+192.168.2-5.5 is NOT VALID<br />
+192.168.*.5 is NOT VALID<br />
