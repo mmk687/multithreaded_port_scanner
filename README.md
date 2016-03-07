@@ -1,11 +1,11 @@
 Usage: simple_port_scanner [target_ip_address(es)] [T:|U:][target_port(s)] [options]
 
-Options:
--d		Debug program
--f <FILE>	Gather IP addresses from a file
--h		Display this help text
--t		Perform a traceroute on the target ip(s)
--aU		Assume that the hosts are up, do not ping
+Options:<br />
+-d		Debug program<br />
+-f <FILE>	Gather IP addresses from a file<br />
+-h		Display this help text<br />
+-t		Perform a traceroute on the target ip(s)<br />
+-aU		Assume that the hosts are up, do not ping<br />
 
 Note: IP Addresses can either be input into the command line or the -f switch can be used
 
