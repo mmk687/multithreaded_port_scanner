@@ -9,9 +9,9 @@ Options:<br />
 
 Note: IP Addresses can either be input into the command line or the -f switch can be used
 
-The following rules apply when using * and - to * to represent IP ranges:
-	1. Only one hyphenated octet per IP glob is allowed and
-	2. Only asterisks are permitted after a hyphenated octet
-	192.168.2-5.* is VALID
-	192.168.2-5.5 is NOT VALID
-	192.168.*.5 is NOT VALID"
+The following rules apply when using * and - to * to represent IP ranges:<br />
+	1. Only one hyphenated octet per IP glob is allowed and<br />
+	2. Only asterisks are permitted after a hyphenated octet<br />
+	192.168.2-5.* is VALID<br />
+	192.168.2-5.5 is NOT VALID<br />
+	192.168.*.5 is NOT VALID"<br />
