@@ -5,6 +5,7 @@ import scapy.all as scapy
 import sys
 import netaddr
 import re
+import time
 from threading import Thread
 from Queue import Queue
 
@@ -34,7 +35,7 @@ traceroute = False
 debug = False
 help = False
 hosts_file = ""
-thread_number = 0
+thread_number = 5
 
 class InvalidArgumentError(Exception):
 	def __init__(self, value):
@@ -95,10 +96,15 @@ def processArgs(args):
 				hosts_file = args[i+1]
 			elif current_argument == "-tH" and len(args) >= i + 1:
 				skip_next = True
-				thread_number = int(args[i+1])
+				next_arg = args[i+1]
+				thread_number = int(next_arg)
+				if thread_number < 1:
+					raise InvalidArgumentError(current_argument + " " + next_arg)
 			else:
 				raise InvalidArgumentError(current_argument)
 	
+		except InvalidArgumentError as e:
+			raise InvalidArgumentError(e.value)
 		except:
 			raise InvalidArgumentError(current_argument)
 
@@ -167,13 +173,14 @@ def pingIPs(ips):
 	print "----------------------------------"
 	print "Pinging Target IPs"
 	print "----------------------------------"
-	print "The following hosts are up:"
 
 	for ip in ips:
 		pingIP(ip, active_ips)
 		
-	print "Done.\n"
-
+	if (active_ips):
+		print "Pinging complete.\n"
+	else:
+		print "There are no active hosts.\n"
 	return sorted(active_ips)
 
 def pingIP(ip, active_ips):
@@ -187,47 +194,107 @@ def pingIP(ip, active_ips):
 
 def scanPorts(ips, tcp_ports, udp_ports, traceroute):
 	
-	for ip in ips:
-		print "----------------------------------"
-		print ip
-		print "----------------------------------\n"
-		if traceroute:
-			trace(ip)
+	if ips:
+		for ip in ips:
+			print "----------------------------------"
+			print ip
+			print "----------------------------------\n"
 
-		if tcp_ports:
-			qTCP = Queue()		
+			if debug:
+				print "Threads for scanning ports: ", thread_number
+
+			start_time = time.time()
+
+			if traceroute:
+				trace(ip)
+
+			if tcp_ports:
+				qTCP = Queue()
+				tcp_port_dict = {}
 		
-			print "Running TCP scan:"
-			for i in range(thread_number):		
-				t = Thread(target=scanTCPPort, args = (ip, qTCP))
-				t.daemon = True
-				t.start()
+				print "Running TCP scan:"
+				sys.stdout.write("\r%d%%" % 0)
+				sys.stdout.flush()
+				for i in range(thread_number):		
+					t = Thread(target=scanTCPPort, args = (ip, tcp_port_dict, qTCP))
+					t.daemon = True
+					t.start()
 
-			for port in tcp_ports:
-				if debug:
-					print "Scanning TCP port ", port, " on ", ip, "..."
-				qTCP.put(port)
+				for port in tcp_ports:
+					if debug:
+						print "Scanning TCP port ", port, " on ", ip, "..."
+					qTCP.put(port)
+					showPercentageCompleted(tcp_ports, tcp_port_dict)
 
-			qTCP.join()
+				while True:
+					percentage = showPercentageCompleted(tcp_ports, tcp_port_dict)
+					if percentage == 100:
+						break;
+				qTCP.join()	
+		
+				port_open = False
 
-		if udp_ports:
-			qUDP = Queue()
+				if debug:		
+					print "tcp_port_dict: ", tcp_port_dict
+				for port in sorted(tcp_port_dict):
+					if tcp_port_dict[port] == "Open":
+						print "\t", port, "\t", tcp_port_dict[port]
+						port_open = True # At least one port is open
 
-			print "Running UDP scan:"
-			for i in range(thread_number):	
-				t = Thread(target=scanUDPPort, args = (ip, qUDP))
-				t.daemon = True
-				t.start()
+				if not port_open:
+					print "\tNo open ports were found."
 
-			for port in udp_ports:
-				if debug:
-					print "Scanning UDP port ", port, " on ", ip, "..."
-				qUDP.put(port)
-			
-			qUDP.join()
+			if udp_ports:
+				qUDP = Queue()
+				udp_port_dict = {}
+
+				print "Running UDP scan:"
+				for i in range(thread_number):	
+					t = Thread(target=scanUDPPort, args = (ip, udp_port_dict, qUDP))
+					t.daemon = True
+					t.start()
+
+				for port in udp_ports:
+					if debug:
+						print "Scanning UDP port ", port, " on ", ip, "..."
+					qUDP.put(port)
+					showPercentageCompleted(udp_ports, udp_port_dict)
+				
+				while True:
+					percentage = showPercentageCompleted(udp_ports, udp_port_dict)
+					if percentage == 100:
+						break;			
+	
+				qUDP.join()
+				
+				port_open = False
+
+				if debug:		
+					print "udp_port_dict: ", udp_port_dict
+				for port in sorted(udp_port_dict):
+					if udp_port_dict[port] == "Open":
+						print "\t", port, "\t", udp_port_dict[port]
+						port_open = True # At least one port is open
+
+				if not port_open:
+					print "\tNo open ports were found."
+
+			end_time = time.time()
+
+			print "\nTotal Scan Time: ", end_time - start_time, " seconds"
 
 	print ""
 	return
+
+def showPercentageCompleted(total, current):
+	percentage = float(len(current))/float(len(total)) * 100
+
+	if debug:	
+		print "Current percentage: ", percentage
+
+	sys.stdout.write("\r%d%%" % percentage)
+	sys.stdout.flush()
+	return percentage
 
 def trace(ip):
 	print "Running traceroute:"
@@ -245,7 +312,7 @@ def trace(ip):
 			print "\t-Trace complete-"
 			break
 
-def scanTCPPort(ip, queue):
+def scanTCPPort(ip, port_dict, queue):
 	while True:
 
 		dst_port = queue.get()
@@ -255,7 +322,7 @@ def scanTCPPort(ip, queue):
 		response = scapy.sr1(packet, verbose=False, timeout=5)
 
 		if response is None:
-			print "\t", dst_port, "\tClosed"
+			port_dict[dst_port]="Closed"
 	
 		elif(response.haslayer(scapy.TCP)):
 
@@ -264,17 +331,17 @@ def scanTCPPort(ip, queue):
 				# Send TCP packet back to host with ACK and RST flags
 				packet = scapy.IP(dst=ip)/scapy.TCP(sport=src_port,dport=dst_port,flags=0x14)
 				send_rst = scapy.sr(packet, verbose=False, timeout=5)
-				print "\t", dst_port, "\tOpen"
+				port_dict[dst_port]="Open"
 
 			# If the packet returned had the RST and ACK flags
 			elif (response.getlayer(scapy.TCP).flags == 0x14):
-				print "\t", dst_port, "\tClosed"
+				port_dict[dst_port]="Closed"
 		else:
-			print "\t", dst_port, "\tClosed"
+			port_dict[dst_port]="Closed"
 
 		queue.task_done()
 
-def scanUDPPort(ip, queue):
+def scanUDPPort(ip, port_dict, queue):
 	while True:
 		
 		dst_port = queue.get()
@@ -283,19 +350,19 @@ def scanUDPPort(ip, queue):
 		response = scapy.sr1(packet, verbose=False, timeout=5)
 	
 		if response is None:
-			print "\t", dst_port, "\t", "Open|Filtered"
+			port_dict[dst_port]="Open|Filtered"
 
 		elif(response.haslayer(scapy.ICMP)):
 			# If the response is an ICMP type 3 (port unreachable) code 3, port is closed
 			if(int(response.getlayer(scapy.ICMP).type)==3 and int(response.getlayer(scapy.ICMP).code)==3):
-				print "\t", dst_port, "\t", "Closed"
+				port_dict[dst_port]="Closed"
 			
 			# If the response is an ICMP port unreachable codes 1,2,9,10,13 port is filtered
 			elif(int(response.getlayer(scapy.ICMP).type)==3 and int(response.getlayer(scapy.ICMP).code) in [1,2,9,10,13]):
-				print "\t", dst_port, "\t", "Filtered"
+				port_dict[dst_port]="Closed"
 	
 		else:
-			print "\t", dst_port, "\t", "Closed"
+			port_dict[dst_port]="Closed"
 		
 		queue.task_done()
 
