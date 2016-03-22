@@ -1,20 +1,24 @@
 Usage: simple_port_scanner [target_ip_address(es)] [T:|U:][target_port(s)] [options]
 
+Options:
 <dl>          
-    <dt>-d</dt>
-    <dd>Debug program</dd>
-             
-    <dt>-f <FILE></dt>
-    <dd>Gather IP addresses from a file</dd>
-                 
-    <dt>-h</dt>
-    <dd>Display this help text</dd>
-                 
-    <dt>-t</dt>
-    <dd>Perform a traceroute on the target ip(s)</dd>
+	<dt>-d</dt>
+	<dd>Debug program</dd>
+	     
+	<dt>-f <FILE></dt>
+	<dd>Gather IP addresses from a file</dd>
+	    	
+	<dt>-h</dt>
+	<dd>Display this help text</dd>
+	         
+	<dt>-t</dt>
+	<dd>Perform a traceroute on the target ip(s)</dd>
 	
 	<dt>-aU</dt>
-    <dd>Assume that the hosts are up, do not ping</dd>
+	<dd>Assume that the hosts are up, do not ping</dd>
+	
+	<dt>-tH <#></dt>
+	<dd>Specify thread count</dd>
 </dl>		
 
 Note: IP Addresses can either be input into the command line or the -f switch can be used
