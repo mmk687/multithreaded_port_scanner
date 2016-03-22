@@ -1,3 +1,5 @@
+This simple port scanner allows for TCP and UDP scanning at a basic level. Each port specified is checked to see if it is either open, closed, or filtered.
+
 Usage: simple_port_scanner [target_ip_address(es)] [T:|U:][target_port(s)] [options]
 
 Options:
