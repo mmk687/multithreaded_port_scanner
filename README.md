@@ -1,4 +1,4 @@
-This simple port scanner allows for TCP and UDP scanning at a basic level. Each port specified is checked to see if it is either open, closed, or filtered.
+This multi-threaded port scanner allows for TCP and UDP scanning at a basic level. Each port specified is checked to see if it is either open, closed, or filtered. IP addresses can be input in several different formats to specify a range (see rules below).
 
 Usage: simple_port_scanner [target_ip_address(es)] [T:|U:][target_port(s)] [options]
 
